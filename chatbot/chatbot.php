@@ -61,28 +61,55 @@ function processMessage($message, $conn) { // Accept $conn as a parameter
         }
     }
 
-    // Product Inquiry
-    if (strpos($message, "product inquiry") !== false) {
-        // Handle product inquiry logic
-        return "Sure! Please provide the name or ID of the product you're interested in.";
-    }
-
     // Query for available products
     if (strpos($message, "what products do you have?") !== false || strpos($message, "show me products") !== false) {
         // Query the database to fetch available products
         $query = "SELECT name FROM products";
         $result = $conn->query($query);
 
-        if ($result->num_rows > 0) {
+        if ($result && $result->num_rows > 0) {
             $productsList = "Here are some of our available products:\n";
             while ($row = $result->fetch_assoc()) {
                 $productsList .= "- " . $row["name"] . "\n";
             }
+            // Set session flag to indicate that products are displayed
+            $_SESSION['products_displayed'] = true;
             // Ask if customer wants to purchase
-            $productsList .= "\nWould you like to purchase any of these products? Please type 'purchase' to proceed or 'skip' to continue browsing.";
+            $productsList .= "\nWould you like to purchase any of these products? Please type 'purchase' followed by the product name to proceed or 'skip' to continue browsing.";
             return $productsList;
         } else {
             return "I'm sorry, but we currently don't have any products available.";
+        }
+    }
+
+    // Handle user's response after displaying products
+    if (isset($_SESSION['products_displayed']) && $_SESSION['products_displayed'] === true) {
+        // Reset the session flag
+        unset($_SESSION['products_displayed']);
+
+        // Check if the user wants to purchase a product
+        $productName = $message; // Assume user entered the product name directly
+        if (isProductAvailable($productName, $conn)) {
+            // Product is available, proceed with purchase
+            // Set the selected product in session for future reference
+            $_SESSION['selected_product'] = $productName;
+            // Ask for the quantity
+            return "How many units of '$productName' would you like to purchase?";
+        } else {
+            // Product is not available, check for similar products
+            $similarProducts = findSimilarProducts($productName, $conn);
+            if (!empty($similarProducts)) {
+                // Similar products found, suggest them to the user
+                $suggestedProducts = "I'm sorry, but '$productName' is not available. However, here are some similar products:\n";
+                foreach ($similarProducts as $similarProduct) {
+                    $suggestedProducts .= "- " . $similarProduct['name'] . "\n";
+                }
+                $suggestedProducts .= "Would you like to purchase any of these products? Please type 'purchase' followed by the product name to proceed or 'skip' to continue browsing.";
+                return $suggestedProducts;
+            } else {
+                // No similar products found, inform the user
+                return "I'm sorry, but '$productName' is not available and we couldn't find any similar products.";
+            }
         }
     }
 
@@ -105,7 +132,7 @@ function processMessage($message, $conn) { // Accept $conn as a parameter
         unset($_SESSION['purchase_initiated']);
     
         // Extract the product name from the user's message
-        $productName = extractProductName($message);
+        $productName = $message;
     
         // Check if the product is available
         if (isProductAvailable($productName, $conn)) {
@@ -122,7 +149,7 @@ function processMessage($message, $conn) { // Accept $conn as a parameter
     // Handle product selection and quantity
     if (strpos($message, "quantity") !== false) {
         // Extract quantity from the message
-        $quantity = extractQuantity($message); // Implement this function to extract the quantity
+        $quantity = trim(substr($message, strpos($message, "quantity") + strlen("quantity")));
         
         // Generate simple invoice
         $productName = $_SESSION['selected_product']; // Product name extracted during purchase initiation
@@ -141,7 +168,7 @@ function processMessage($message, $conn) { // Accept $conn as a parameter
         $quantity = extractQuantity($message); // Extracted quantity
         
         addToCart($productName, $quantity, $conn); // Implement this function
-        redirectToCheckoutPage(); // Implement this function
+        echo "<script>window.location.href = 'checkout.php';</script>";
         
         return "The product has been added to your cart. You will now be redirected to the checkout page.";
     }
@@ -208,7 +235,7 @@ function processMessage($message, $conn) { // Accept $conn as a parameter
         saveFeedback($customerName, $customerEmail, $feedback, $conn); // Implement this function
 
         // Reset the feedback initiation flag
-        unset($_SESSION['feedback_initiated']);
+        // unset($_SESSION['feedback_initiated']);
 
         // Say goodbye with a personalized message if customer leaves feedback
         return "Thank you for your feedback. Have a nice day!";
@@ -216,14 +243,6 @@ function processMessage($message, $conn) { // Accept $conn as a parameter
 
     // Default response
     return "I'm sorry, I didn't understand that. Could you please rephrase?";
-}
-
-// Function to extract product name from message
-function extractProductName($message) {
-    // Implement logic to extract product name from the message
-    // For demonstration purposes, let's assume the product name is everything after "purchase"
-    $startIndex = strpos($message, "purchase") + strlen("purchase");
-    return trim(substr($message, $startIndex));
 }
 
 // Function to extract quantity from message
@@ -239,9 +258,25 @@ function isProductAvailable($productName, $conn) {
     // Implement logic to check if the product is available in the database
     // For demonstration purposes, let's assume there is a table named 'products' with a column 'name'
     $productName = mysqli_real_escape_string($conn, $productName);
-    $query = "SELECT * FROM products WHERE name = '$productName'";
+    $query = "SELECT * FROM products WHERE name LIKE '$productName%'";
     $result = $conn->query($query);
-    return $result->num_rows > 0;
+    return ($result && $result->num_rows > 0);
+}
+
+// Function to find similar products
+function findSimilarProducts($productName, $conn) {
+    // Implement logic to find similar products in the database
+    // For demonstration purposes, let's assume there is a table named 'products' with a column 'name'
+    $productName = mysqli_real_escape_string($conn, $productName);
+    $query = "SELECT * FROM products WHERE name LIKE '%$productName%' LIMIT 5";
+    $result = $conn->query($query);
+    $similarProducts = array();
+    if ($result && $result->num_rows > 0) {
+        while ($row = $result->fetch_assoc()) {
+            $similarProducts[] = $row;
+        }
+    }
+    return $similarProducts;
 }
 
 // Function to calculate total price
@@ -256,16 +291,12 @@ function calculateTotalPrice($productName, $quantity) {
 function addToCart($productName, $quantity, $conn) {
     // Here you would implement the logic to add the product to the cart
     // For demonstration purposes, let's assume we insert the product into a cart table in the database
+    $productName = mysqli_real_escape_string($conn, $productName);
     $query = "INSERT INTO cart (product_name, quantity) VALUES ('$productName', $quantity)";
     $conn->query($query);
 }
 
-// Function to redirect to checkout page
-function redirectToCheckoutPage() {
-    // Here you would implement the logic to redirect the user to the checkout page
-    // Redirect user to the checkout page using JavaScript
-    echo "<script>window.location.href = 'checkout.php';</script>";
-}
+
 // Function to extract tracking number from message
 function extractTrackingNumber($message) {
     // Implement logic to extract tracking number from the message
@@ -282,13 +313,7 @@ function getOrderInfo($trackingNumber, $conn) {
     $query = "SELECT * FROM orders WHERE order_id = '$trackingNumber'";
     $result = $conn->query($query);
     
-    if ($result === false) {
-        // Print the error for debugging
-        echo "Error: " . $conn->error;
-        return false;
-    }
-    
-    if ($result->num_rows > 0) {
+    if ($result && $result->num_rows > 0) {
         return $result->fetch_assoc();
     } else {
         return false;
