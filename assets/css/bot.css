@@ -1,0 +1,23 @@
+small.time {
+    font-size: xx-small;
+    color: gray;
+}
+#openChat {
+    margin-top: 10px;
+}
+
+div#chatContainer {
+    width: 300px;
+}
+img.emoji {
+    margin: 0px 1px 0px 2px;
+    vertical-align: -5px;
+    width: 18px;
+    height: 18px;
+}
+.feedbackbuttons {
+    margin: 20px 0px;
+}
+.feedback-input input {
+    margin: 5px 0px;
+}

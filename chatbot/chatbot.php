@@ -1,8 +1,6 @@
 <?php
-// chatbot.php
-
-// Include database connection file
-include('../includes/db_connect.php');
+// Include database connection details
+include('../includes/db_config.php');
 
 // Start session
 session_start();
@@ -15,11 +13,9 @@ $response = processMessage($message, $conn); // Pass $conn as a parameter
 
 // Send response
 echo $response;
-
 // Function to process user message
 function processMessage($message, $conn) { // Accept $conn as a parameter
-    $message = strtolower($message);
-    
+    $botname = "Agrina";
     // Get current hour
     $currentHour = date('G');
 
@@ -27,151 +23,73 @@ function processMessage($message, $conn) { // Accept $conn as a parameter
     $greetings = array("hello", "hi", "hey", "howdy", "good morning", "good afternoon", "good evening");
     if (in_array($message, $greetings)) {
         if ($message == "good morning" && $currentHour >= 5 && $currentHour < 12) {
-            return "Good morning! I'm Agrina. How can I assist you today?";
+            return "Good morning buddy! Welcome to our store. I'm $botname , your chat assistant. How can I assist you today?";
         } elseif ($message == "good afternoon" && $currentHour >= 12 && $currentHour < 18) {
-            return "Good afternoon! I'm Agrina. How can I assist you today?";
+            return "Good afternoon buddy! Welcome to our store. I'm $botname , your chat assistant. How can I assist you today?";
         } elseif ($message == "good evening" && ($currentHour >= 18 || $currentHour < 5)) {
-            return "Good evening! I'm Agrina. How can I assist you today?";
+            return "Good evening buddy! Welcome to our store. ! I'm $botname , your chat assistant. How can I assist you today?";
         } else {
-            return "Hello! I'm Agrina your chat assistant. How can I assist you today?";
+            return "Hello there! Welcome to our store. I'm $botname , your chat assistant. How can I assist you today?";
         }
     }
-    
-    // FAQs
-    $faqs = array(
-        "what is your return policy?" => "Our return policy allows you to return items within 30 days of purchase for a full refund.",
-        "do you offer free shipping?" => "Yes, we offer free shipping on orders over $50.",
-        "how can I track my order?" => "You can track your order by logging into your account and visiting the order tracking page.",
-        "what payment methods do you accept?" => "We accept Visa, Mastercard, American Express, and PayPal.",
-        "do you offer international shipping?" => "Yes, we offer international shipping to most countries. Shipping rates vary depending on the destination.",
-        "what is the delivery time for orders?" => "Delivery times vary depending on your location and the shipping method chosen. Typically, orders are delivered within 3-7 business days.",
-        "how can I contact customer support?" => "You can contact our customer support team by phone at 1-800-123-4567 or by email at support@example.com.",
-        "do you have a loyalty program?" => "Yes, we have a loyalty program that rewards you with points for every purchase. You can redeem these points for discounts on future orders.",
-        "what is your product warranty policy?" => "Our products come with a one-year warranty against manufacturing defects. Please refer to our warranty page for more details.",
-        "do you offer gift wrapping services?" => "Yes, we offer gift wrapping services for an additional fee. You can select this option during checkout.",
-        "can I change or cancel my order?" => "Once an order is placed, it cannot be changed or canceled. However, you may be able to return the items for a refund once they are received.",
-        "are your products eco-friendly?" => "We strive to offer eco-friendly products whenever possible. Look for the 'eco-friendly' label on product pages for more information.",
-        "do you have a size guide for clothing?" => "Yes, we provide a size guide on each clothing product page to help you choose the right size.",
-        // Add more FAQs as needed
-    );
-    
-    foreach ($faqs as $question => $answer) {
+
+    // Retrieve FAQs from the database
+    $faqs = getFAQsFromDatabase($conn);
+
+    // Loop through the retrieved FAQs
+    foreach ($faqs as $faq) {
+        $question = strtolower($faq['question']);
+        $answer = $faq['answer'];
+        // Check if the user's message contains the FAQ question
         if (strpos($message, $question) !== false) {
             return $answer;
         }
     }
+    
 
-    // Query for available products
-    if (strpos($message, "what products do you have?") !== false || strpos($message, "show me products") !== false) {
-        // Query the database to fetch available products
-        $query = "SELECT name FROM products";
-        $result = $conn->query($query);
-
-        if ($result && $result->num_rows > 0) {
-            $productsList = "Here are some of our available products:\n";
-            while ($row = $result->fetch_assoc()) {
-                $productsList .= "- " . $row["name"] . "\n";
-            }
-            // Set session flag to indicate that products are displayed
-            $_SESSION['products_displayed'] = true;
-            // Ask if customer wants to purchase
-            $productsList .= "\nWould you like to purchase any of these products? Please type 'purchase' followed by the product name to proceed or 'skip' to continue browsing.";
-            return $productsList;
+    // Handle order cancellation
+    if (strpos($message, "cancel order") !== false) {
+        // Extract order ID from the message
+        $orderId = extractOrderId($message);
+        // Check if order ID is provided
+        if ($orderId) {
+            // Ask for user's name to confirm identity
+            $_SESSION['cancel_order_id'] = $orderId; // Store order ID in session
+            return "To confirm your identity, please provide your name associated with the order.";
         } else {
-            return "I'm sorry, but we currently don't have any products available.";
+            return "Please provide a valid order ID to cancel an order.";
         }
     }
 
-    // Handle user's response after displaying products
-    if (isset($_SESSION['products_displayed']) && $_SESSION['products_displayed'] === true) {
-        // Reset the session flag
-        unset($_SESSION['products_displayed']);
-
-        // Check if the user wants to purchase a product
-        $productName = $message; // Assume user entered the product name directly
-        if (isProductAvailable($productName, $conn)) {
-            // Product is available, proceed with purchase
-            // Set the selected product in session for future reference
-            $_SESSION['selected_product'] = $productName;
-            // Ask for the quantity
-            return "How many units of '$productName' would you like to purchase?";
-        } else {
-            // Product is not available, check for similar products
-            $similarProducts = findSimilarProducts($productName, $conn);
-            if (!empty($similarProducts)) {
-                // Similar products found, suggest them to the user
-                $suggestedProducts = "I'm sorry, but '$productName' is not available. However, here are some similar products:\n";
-                foreach ($similarProducts as $similarProduct) {
-                    $suggestedProducts .= "- " . $similarProduct['name'] . "\n";
+    // Handle user's name for order cancellation confirmation
+    if (isset($_SESSION['cancel_order_id'])) {
+        // Confirm identity and ask for order cancellation confirmation
+        if (isset($_SESSION['confirm_cancel_name'])) {
+            if (strtolower($message) === 'yes') {
+                $orderId = $_SESSION['cancel_order_id'];
+                $customerName = $_SESSION['confirm_cancel_name'];
+                unset($_SESSION['cancel_order_id'], $_SESSION['confirm_cancel_name']);
+                
+                $query = "UPDATE orders SET status = 'Cancelled' WHERE order_id = '$orderId' AND customer_name = '$customerName'";
+                if ($conn->query($query) === TRUE) {
+                    $orderId = strtoupper($orderId);
+                    return "Your order $orderId has been cancelled successfully.";
+                } else {
+                    return "Error cancelling the order: " . $conn->error;
                 }
-                $suggestedProducts .= "Would you like to purchase any of these products? Please type 'purchase' followed by the product name to proceed or 'skip' to continue browsing.";
-                return $suggestedProducts;
+            } elseif (strtolower($message) === 'no') {
+                unset($_SESSION['cancel_order_id'], $_SESSION['confirm_cancel_name']);
+                return "Order cancellation process cancelled.";
             } else {
-                // No similar products found, inform the user
-                return "I'm sorry, but '$productName' is not available and we couldn't find any similar products.";
+                return "Please respond with 'yes' or 'no' to confirm order cancellation.";
             }
-        }
-    }
-
-    // Handle skipping product purchase
-    if (strpos($message, "skip") !== false) {
-        return "Is there anything else that I can help you with?";
-    }
-
-    // Handle purchase initiation
-    if (strpos($message, "purchase") !== false) {
-        // Set session flag to indicate purchase initiation
-        $_SESSION['purchase_initiated'] = true;
-        // Ask for the product name
-        return "What product would you like to purchase?";
-    }
-
-    // Handle subsequent messages after purchase initiation
-    if (isset($_SESSION['purchase_initiated']) && $_SESSION['purchase_initiated'] === true) {
-        // Reset the purchase initiation flag
-        unset($_SESSION['purchase_initiated']);
-    
-        // Extract the product name from the user's message
-        $productName = $message;
-    
-        // Check if the product is available
-        if (isProductAvailable($productName, $conn)) {
-            // Set the selected product in session for future reference
-            $_SESSION['selected_product'] = $productName;
-        
-            // Ask for the quantity
-            return "How many units of '$productName' would you like to purchase?";
         } else {
-            return "I'm sorry, but '$productName' is not available. Please choose another product or type 'skip' to cancel the purchase.";
+            $_SESSION['confirm_cancel_name'] = ucfirst($message);
+            $orderId = strtoupper($_SESSION['cancel_order_id']);
+            return "Identity confirmed! Hey {$_SESSION['confirm_cancel_name']}, are you sure you want to cancel your order {$_SESSION['cancel_order_id']}?";
         }
     }
 
-    // Handle product selection and quantity
-    if (strpos($message, "quantity") !== false) {
-        // Extract quantity from the message
-        $quantity = trim(substr($message, strpos($message, "quantity") + strlen("quantity")));
-        
-        // Generate simple invoice
-        $productName = $_SESSION['selected_product']; // Product name extracted during purchase initiation
-        $totalPrice = calculateTotalPrice($productName, $quantity); // Implement this function
-        $invoice = "Invoice:\nProduct: " . $productName . "\nQuantity: " . $quantity . "\nTotal Price: $" . $totalPrice;
-        
-        // Ask if customer wants to continue purchase
-        $invoice .= "\nWould you like to continue with this purchase? Please type 'yes' to proceed or 'no' to cancel.";
-        return $invoice;
-    }
-
-    // Handle purchase confirmation
-    if (strpos($message, "yes") !== false) {
-        // Add product to cart and navigate to checkout page
-        $productName = $_SESSION['selected_product']; // Extracted product name
-        $quantity = extractQuantity($message); // Extracted quantity
-        
-        addToCart($productName, $quantity, $conn); // Implement this function
-        echo "<script>window.location.href = 'checkout.php';</script>";
-        
-        return "The product has been added to your cart. You will now be redirected to the checkout page.";
-    }
 
     // Handle order tracking
     if (strpos($message, "track order") !== false) {
@@ -180,122 +98,136 @@ function processMessage($message, $conn) { // Accept $conn as a parameter
         
         // Query the database to retrieve order information
         $orderInfo = getOrderInfo($trackingNumber, $conn);
-        $customersupport = "<a href='tel:+918451236710'>+918451236710</a>"; // Customer support number with on-click link
+        $customerSupport = "<a href='tel:+18001234567'>1-800-123-4567</a>"; // Customer support number with on-click link
         
         if ($orderInfo) {
             // Construct and return response with order details
-            return "Your order status for Order ID $trackingNumber is: " . $orderInfo['status']. "To know more please feel free to contact our customer support agent $customersupport";
+            return "Your order status for Order ID $trackingNumber is: " . $orderInfo['status']. ". To know more, please feel free to contact our customer support agent $customerSupport.";
         } else {
             return "Sorry, we couldn't find any order with Order ID $trackingNumber. Please verify the Order ID and try again.";
         }
     }
+    
 
-    // Handle order cancellation
-    if (strpos($message, "cancel order") !== false) {
-        $trackingNumber = strtoupper(trim(substr($message, strpos($message, "cancel order") + strlen("cancel order"))));
-        $orderInfo = getOrderInfo($trackingNumber, $conn);
-
-        if ($orderInfo) {
-            // Update order status to canceled
-            $query = "UPDATE orders SET status = 'canceled' WHERE order_id = '$trackingNumber'";
-            if ($conn->query($query) === TRUE) {
-                return "Your order with Order ID $trackingNumber has been successfully canceled.";
-            } else {
-                return "Sorry, we encountered an error while canceling your order. Please try again later.";
+   // Handle request to show all available products
+    if (strpos($message, "show me products") !== false || strpos($message, "show products") !== false || strpos($message, "show me all available products") !== false || strpos($message, "what are the products you have") !== false) {
+        // Query the database to retrieve all available products
+        $products = getAllProducts($conn);
+    
+        if ($products) {
+        // Construct and return response with all available products in table format
+            $response = "Here are all available products:\n";
+            $response .= "<table><tr><th>Name</th><th>Price</th></tr>";
+            foreach ($products as $product) {
+                $response .= "<tr><td>" . $product['name'] . "</td><td>$" . $product['price'] . "</td></tr>";
             }
+            $response .= "</table>";
+            return $response;
         } else {
-            return "Sorry, we couldn't find any order with Order ID $trackingNumber. Please verify the Order ID and try again.";
+            return "Sorry, we couldn't retrieve the list of available products at the moment. Please try again later.";
+        }
+        
+    }
+
+    
+
+    // Handle purchase option
+    if (strpos($message, "buy") !== false || strpos($message, "purchase") !== false) {
+        // Check if the user wants to buy something
+        $product = extractProductName($message, $conn);
+        if ($product) {
+            if (!isset($_SESSION['cart'])) {
+                $_SESSION['cart'] = array(); // Initialize cart as an array if not already set
+            }
+            $_SESSION['cart'][] = array('name' => $product['name'], 'price' => $product['price']); // Default quantity set to 1
+            return "Can you tell me the quantity?";
+        } else {
+            return "I'm sorry, I didn't catch that. Could you please specify the product you want to buy?";
         }
     }
 
-     // Handle closing conversation and feedback
-     $closingMessages = array("thanks", "thank you", "bye", "see you", "catch you later");
-     if (in_array($message, $closingMessages)) {
-         // Ask if the customer would like to leave feedback
-         return "Would you like to leave feedback? Please type 'yes' or 'no'.";
-     }
- 
-    // Handle feedback initiation
-    if (strpos($message, "yes") !== false) {
-        // Set session flag to indicate feedback initiation
-        $_SESSION['feedback_initiated'] = true;
-        return "Please leave your feedback below:";
-    } elseif (strpos($message, "no") !== false) {
-        return "Thank you for your visit. Have a nice day!";
+    // Handle quantity input
+    if (isset($_SESSION['cart']) && preg_match('/(\d+\.?\d*)\s*(liters|kg|kgs|pounds|lbs?)/', $message, $matches)) {
+        // Extract the quantity and unit
+        $quantity = intval($matches[1]);
+        $unit = $matches[2];
+        // Update the quantity in the cart
+        $lastProductIndex = count($_SESSION['cart']) - 1;
+        $_SESSION['cart'][$lastProductIndex]['quantity'] = $quantity;
+        $_SESSION['cart'][$lastProductIndex]['unit'] = $unit;
+        return "Added to cart. Do you want to buy something else?";
     }
 
-    // Handle feedback submission
-    if (isset($_SESSION['feedback_initiated']) && $_SESSION['feedback_initiated'] === true) {
-        // Extract feedback from the user's message
-        $feedback = $message;
+    // Handle additional purchase
+    if (isset($_SESSION['cart']) && strtolower($message) === 'yes') {
+        return "What else would you like to buy?";
+    }
 
-        // Save feedback in the database
-        $customerName = ""; // Extracted customer name (if available)
-        $customerEmail = ""; // Extracted customer email (if available)
-        saveFeedback($customerName, $customerEmail, $feedback, $conn); // Implement this function
+    // Handle checkout
+    if (isset($_SESSION['cart']) && strtolower($message) === 'no') {
+        // Prepare invoice
+        $invoice = "<table>
+                      <tr>
+                        <th>Item Name</th>
+                        <th>Quantity</th>
+                        <th>Price</th>
+                      </tr>";
+        $totalPrice = 0;
+        foreach ($_SESSION['cart'] as $item) {
+            $subtotal = $item['quantity'] * $item['price'];
+            $invoice .= "<tr>
+                            <td>{$item['name']}</td>
+                            <td>{$item['quantity']} {$item['unit']}</td>
+                            <td>$subtotal</td>
+                          </tr>";
+            $totalPrice += $subtotal;
+        }
+        $invoice .= "<tr>
+                        <td colspan='2'>Total</td>
+                        <td>$totalPrice</td>
+                     </tr>
+                     </table>";
 
-        // Reset the feedback initiation flag
-        // unset($_SESSION['feedback_initiated']);
+        // Reset cart
+        unset($_SESSION['cart']);
 
-        // Say goodbye with a personalized message if customer leaves feedback
-        return "Thank you for your feedback. Have a nice day!";
+        // Provide checkout link
+        return "Here is your invoice:\n$invoice\nClick the link to continue purchase: <a href='checkout.php'>Checkout</a>\n\nIs there something else that I can help you with?";
+    }
+    
+    // Feedback Handle
+    if (strpos($message, "bye") !== false || strpos($message, "Bye") !== false || strpos($message, "BYE") !== false || strpos($message, "seeyou soon") !== false || strpos($message, "Seeyou Soon") !== false) {
+        // Initiate feedback process
+        $_SESSION['rate_experience'] = true;
+        return "<div class='feedbacksection'>
+        <div class='feedbackform'>
+        Goodbye! Kindly rate your experience with us: <br>
+          <label></label>
+          <br>
+          <input type='text' name='customer_name' id='customerName' placeholder='name'>
+          <br>
+          <label></label>
+          <br>
+          <input type='email' name='email' id='customerEmail' placeholder='email'>
+          <br>
+          <label></label>
+          <br>
+          <textarea name='feedback' id='feedbackText' placeholder='feedback'></textarea>
+          <br>
+          <label></label>
+          <br>
+          <input type='radio' name='rating' id='rating' value='Very Bad'>😡 <input type='radio' name='rating' id='rating' value='bad'>😕 <input type='radio' name='rating' id='rating' value='Average'>😐 <input type='radio' name='rating' id='rating' value='Good'>🙂 <input type='radio' name='rating' id='rating' value='Very Good'>😃 <br>
+          <button onclick='submitFeedback()'>Submit</button>
+        </div>
+        <div class='thankyousection' style='display: none''>
+        Thank you for your feedback
+        </div>
+        ";
     }
 
     // Default response
-    return "I'm sorry, I didn't understand that. Could you please rephrase?";
+    return "I'm sorry, I didn't understand that. Could you please say that in another way?";
 }
-
-// Function to extract quantity from message
-function extractQuantity($message) {
-    // Implement logic to extract quantity from the message
-    // For demonstration purposes, let's assume the quantity is everything after "quantity"
-    $startIndex = strpos($message, "quantity") + strlen("quantity");
-    return trim(substr($message, $startIndex));
-}
-
-// Function to check if the product is available
-function isProductAvailable($productName, $conn) {
-    // Implement logic to check if the product is available in the database
-    // For demonstration purposes, let's assume there is a table named 'products' with a column 'name'
-    $productName = mysqli_real_escape_string($conn, $productName);
-    $query = "SELECT * FROM products WHERE name LIKE '$productName%'";
-    $result = $conn->query($query);
-    return ($result && $result->num_rows > 0);
-}
-
-// Function to find similar products
-function findSimilarProducts($productName, $conn) {
-    // Implement logic to find similar products in the database
-    // For demonstration purposes, let's assume there is a table named 'products' with a column 'name'
-    $productName = mysqli_real_escape_string($conn, $productName);
-    $query = "SELECT * FROM products WHERE name LIKE '%$productName%' LIMIT 5";
-    $result = $conn->query($query);
-    $similarProducts = array();
-    if ($result && $result->num_rows > 0) {
-        while ($row = $result->fetch_assoc()) {
-            $similarProducts[] = $row;
-        }
-    }
-    return $similarProducts;
-}
-
-// Function to calculate total price
-function calculateTotalPrice($productName, $quantity) {
-    // Here you would implement the logic to calculate the total price based on the product and quantity
-    // For demonstration purposes, let's assume a fixed price per product
-    $pricePerProduct = 50; // Update with actual price per product
-    return $pricePerProduct * $quantity;
-}
-
-// Function to add product to cart
-function addToCart($productName, $quantity, $conn) {
-    // Here you would implement the logic to add the product to the cart
-    // For demonstration purposes, let's assume we insert the product into a cart table in the database
-    $productName = mysqli_real_escape_string($conn, $productName);
-    $query = "INSERT INTO cart (product_name, quantity) VALUES ('$productName', $quantity)";
-    $conn->query($query);
-}
-
 
 // Function to extract tracking number from message
 function extractTrackingNumber($message) {
@@ -320,12 +252,110 @@ function getOrderInfo($trackingNumber, $conn) {
     }
 }
 
-// Function to save feedback in the database
-function saveFeedback($customerName, $customerEmail, $feedback, $conn) {
-    // Implement the logic to save feedback in the database
-    // You can display a form here to collect additional information such as customer name and email
-    // For simplicity, I'll assume we only save the feedback
-    $query = "INSERT INTO feedback (customer_name, customer_email, feedback) VALUES ('$customerName', '$customerEmail', '$feedback')";
-    $conn->query($query);
+
+// Function to retrieve all available products from the database
+function getAllProducts($conn) {
+    // Implement logic to retrieve all available products from the database
+    // For demonstration purposes, let's assume there is a table named 'products' with columns 'name', 'price', 'image', 'description', 'badge', and 'original_price'
+    $query = "SELECT * FROM products";
+    $result = $conn->query($query);
+    
+    if ($result && $result->num_rows > 0) {
+        $products = array();
+        while ($row = $result->fetch_assoc()) {
+            $products[] = $row;
+        }
+        return $products;
+    } else {
+        return false;
+    }
 }
+
+// Function to retrieve FAQs from the database
+function getFAQsFromDatabase($conn) {
+    $faqs = array();
+
+    // Query the FAQs from the database
+    $query = "SELECT * FROM faqs";
+    $result = $conn->query($query);
+
+    if ($result && $result->num_rows > 0) {
+        // Fetch FAQs and store them in an array
+        while ($row = $result->fetch_assoc()) {
+            $faqs[] = $row;
+        }
+    }
+
+    return $faqs;
+}
+
+// Function to extract order ID from message for cancellation
+function extractOrderId($message) {
+    // Implement logic to extract order ID from the message
+    // For demonstration purposes, let's assume the order ID is everything after "cancel order"
+    $startIndex = strpos($message, "cancel order") + strlen("cancel order");
+    return trim(substr($message, $startIndex));
+}
+
+// Function to extract product name and price from message
+function extractProductName($message, $conn) {
+    // Extract product name
+    $startIndex = strpos($message, "buy") !== false ? strpos($message, "buy") + strlen("buy") : strpos($message, "purchase") + strlen("purchase");
+    $productName = trim(substr($message, $startIndex));
+
+    // Query the database to fetch product details
+    $productName = mysqli_real_escape_string($conn, $productName);
+    $query = "SELECT * FROM products WHERE name = '$productName'";
+    $result = $conn->query($query);
+
+    if ($result && $result->num_rows > 0) {
+        $product = $result->fetch_assoc();
+        return array('name' => $productName, 'price' => $product['price']);
+    } else {
+        return false;
+    }
+}
+
+// Function to calculate total amount
+function calculateTotalAmount($cart) {
+    $total = 0;
+    foreach ($cart as $product) {
+        $total += $product['price'] * $product['quantity'];
+    }
+    return $total;
+}
+
 ?>
+
+<script>
+function submitFeedback() {
+    // Get the feedback text
+    var feedback = document.getElementById('feedbackText').value;
+    var customerName = document.getElementById('customerName').value;
+    var customerEmail = document.getElementById('customerEmail').value;
+    var rating = document.querySelector('input[name="rating"]:checked').value;
+
+    // Send the rating and feedback to the server
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", "chatbot/save_feedback.php", true);
+    xhr.setRequestHeader("Content-Type", "application/json");
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+            // Handle the response from the server
+            if (xhr.responseText.trim() === "success") {
+                // Hide the feedback form
+                document.querySelector('.feedbackform').style.display = 'none';
+                
+                // Show the thank you message
+                document.querySelector('.thankyousection').style.display = 'block';
+            } else {
+                // Handle error if needed
+                console.error("Error submitting feedback:", xhr.responseText);
+            }
+        }
+    };
+    xhr.send(JSON.stringify({ rating: rating, name: customerName, email: customerEmail, feedback: feedback }));
+}
+
+
+</script>
