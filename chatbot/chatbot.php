@@ -21,15 +21,16 @@ function processMessage($message, $conn) { // Accept $conn as a parameter
 
     // Greetings
     $greetings = array("hello", "hi", "hey", "howdy", "good morning", "good afternoon", "good evening");
-    if (in_array($message, $greetings)) {
-        if ($message == "good morning" && $currentHour >= 5 && $currentHour < 12) {
-            return "Good morning buddy! Welcome to our store. I'm $botname , your chat assistant. How can I assist you today?";
-        } elseif ($message == "good afternoon" && $currentHour >= 12 && $currentHour < 18) {
-            return "Good afternoon buddy! Welcome to our store. I'm $botname , your chat assistant. How can I assist you today?";
-        } elseif ($message == "good evening" && ($currentHour >= 18 || $currentHour < 5)) {
-            return "Good evening buddy! Welcome to our store. ! I'm $botname , your chat assistant. How can I assist you today?";
+    $messageLowercase = strtolower($message); // Convert message to lowercase
+    if (in_array($messageLowercase, $greetings)) {
+        if ($messageLowercase == "good morning" && $currentHour >= 5 && $currentHour < 12) {
+            return "Good morning buddy! I'm $botname , your chat assistant. How can I assist you today?";
+        } elseif ($messageLowercase == "good afternoon" && $currentHour >= 12 && $currentHour < 18) {
+            return "Good afternoon buddy! I'm $botname , your chat assistant. How can I assist you today?";
+        } elseif ($messageLowercase == "good evening" && ($currentHour >= 18 || $currentHour < 5)) {
+            return "Good evening buddy! ! I'm $botname , your chat assistant. How can I assist you today?";
         } else {
-            return "Hello there! Welcome to our store. I'm $botname , your chat assistant. How can I assist you today?";
+            return "Hello there! I'm $botname , your chat assistant. How can I assist you today?";
         }
     }
 
@@ -92,7 +93,7 @@ function processMessage($message, $conn) { // Accept $conn as a parameter
 
 
     // Handle order tracking
-    if (strpos($message, "track order") !== false) {
+    if (strpos($message, "track order") !== false || strpos($message, "track my order") !== false || strpos($message, "show order status of") !== false) {
         // Extract tracking number from the message
         $trackingNumber = extractTrackingNumber($message);
         
@@ -102,7 +103,8 @@ function processMessage($message, $conn) { // Accept $conn as a parameter
         
         if ($orderInfo) {
             // Construct and return response with order details
-            return "Your order status for Order ID $trackingNumber is: " . $orderInfo['status']. ". To know more, please feel free to contact our customer support agent $customerSupport.";
+            $statusMessage = getOrderStatusMessage($orderInfo['status']);
+            return "Your order status for Order ID $trackingNumber is: " . $statusMessage. ". To know more, please feel free to contact our customer support agent $customerSupport.";
         } else {
             return "Sorry, we couldn't find any order with Order ID $trackingNumber. Please verify the Order ID and try again.";
         }
@@ -252,6 +254,22 @@ function getOrderInfo($trackingNumber, $conn) {
     }
 }
 
+// Function to get status message based on order status
+function getOrderStatusMessage($status) {
+    switch ($status) {
+        case 'shipped':
+            return "Your order has been shipped and will be arriving in 4-5 working days.";
+        case 'dispatched':
+            return "Your order has been dispatched and will be arriving in 7 working days.";
+        case 'refunded':
+            return "Your order has been refunded.";
+        case 'awaiting for payment':
+            return "Your order is awaiting payment update the payment status if needed";
+        // Add more cases for other order statuses as needed
+        default:
+            return "Your order status: $status";
+    }
+}
 
 // Function to retrieve all available products from the database
 function getAllProducts($conn) {
