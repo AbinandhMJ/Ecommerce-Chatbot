@@ -38,15 +38,21 @@ function processMessage($message, $conn) { // Accept $conn as a parameter
     $faqs = getFAQsFromDatabase($conn);
 
     // Loop through the retrieved FAQs
-    foreach ($faqs as $faq) {
-        $question = strtolower($faq['question']);
-        $answer = $faq['answer'];
+    // foreach ($faqs as $faq) {
+    //     $question = strtolower($faq['question']);
+    //     $answer = $faq['answer'];
         // Check if the user's message contains the FAQ question
-        if (strpos($message, $question) !== false) {
-            return $answer;
-        }
+    //     if (strpos($message, $question) !== false) {
+    //         return $answer;
+    //     }
+    // }
+    // Retrieve FAQ answer based on user's message
+    $faqAnswer = retrieveFAQAnswer($message, $faqs);
+
+    // If FAQ answer is found
+    if ($faqAnswer !== false) {
+        return $faqAnswer;
     }
-    
 
     // Handle order cancellation
     if (strpos($message, "cancel order") !== false) {
@@ -300,13 +306,34 @@ function getFAQsFromDatabase($conn) {
     if ($result && $result->num_rows > 0) {
         // Fetch FAQs and store them in an array
         while ($row = $result->fetch_assoc()) {
-            $faqs[] = $row;
+            $faqs[] = array(
+                'question' => $row['question'],
+                'answer' => $row['answer']
+            );
         }
     }
 
     return $faqs;
 }
 
+// Function to retrieve FAQ answer based on user's message
+function retrieveFAQAnswer($message, $faqs) {
+    $messageLowercase = strtolower($message); // Convert message to lowercase
+
+    // Loop through the retrieved FAQs
+    foreach ($faqs as $faq) {
+        $question = strtolower($faq['question']);
+        $answer = $faq['answer'];
+        
+        // Check if the user's message contains the FAQ question
+        if (strpos($messageLowercase, $question) !== false) {
+            return $answer;
+        }
+    }
+
+    // If no FAQ matches the user's message
+    return false;
+}
 // Function to extract order ID from message for cancellation
 function extractOrderId($message) {
     // Implement logic to extract order ID from the message
